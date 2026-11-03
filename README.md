@@ -6,9 +6,9 @@ CampusLoop aims to give students one reliable place to discover campus events an
 
 ## Current status
 
-**Phase:** Product and technical specifications established; implementation setup next
+**Phase:** Backend foundation created; core product workflows next
 
-The initial product requirements and architecture are documented. Application code has not been implemented yet.
+The product and technical specifications are documented. The backend scaffold, PostgreSQL Compose service, environment configuration, and health checks are in place; authentication, events, registrations, approvals, and other product workflows are not implemented yet.
 
 ## Documentation
 
@@ -31,6 +31,18 @@ The initial product requirements and architecture are documented. Application co
 - **Infrastructure:** Docker; Redis and background workers when justified
 
 The initial architecture is a modular monolith. A future mobile application is expected to use the same backend APIs.
+
+## Local development
+
+The backend setup and Windows PowerShell instructions are in [backend/README.md](backend/README.md).
+
+Start the local PostgreSQL service from the repository root:
+
+```powershell
+docker compose up -d db
+```
+
+Then follow the backend README to create the Python environment, install dependencies, run the API, and execute tests.
 
 ## Initial pilot
 
