@@ -185,6 +185,7 @@ The following routes are a planning baseline. Request/response schemas, query pa
 | POST | `/api/v1/events/{event_id}/submit` | Submit for approval |
 | POST | `/api/v1/events/{event_id}/publish` | Publish when policy permits |
 | POST | `/api/v1/events/{event_id}/cancel` | Cancel event |
+| POST | `/api/v1/events/{event_id}/revisions` | Submit a material edit to an approved event for review |
 
 ### 6.4 Registrations
 
@@ -202,6 +203,7 @@ The following routes are a planning baseline. Request/response schemas, query pa
 | GET | `/api/v1/organizer/events` | List events managed by organizer |
 | GET | `/api/v1/organizer/dashboard` | Organizer dashboard data |
 | GET | `/api/v1/organizer/events/{event_id}/export` | Export authorized participant list |
+| GET | `/api/v1/organizer/events/{event_id}/revisions` | List revisions for a managed event |
 
 ### 6.6 College administration
 
@@ -209,7 +211,12 @@ The following routes are a planning baseline. Request/response schemas, query pa
 |---|---|---|
 | GET | `/api/v1/admin/events/pending` | List pending events in college scope |
 | POST | `/api/v1/admin/events/{event_id}/approve` | Approve event |
-| POST | `/api/v1/admin/events/{event_id}/reject` | Reject event |
+| POST | `/api/v1/admin/events/{event_id}/reject` | Reject initial event submission |
+| GET | `/api/v1/admin/event-revisions/pending` | List pending material event revisions |
+| POST | `/api/v1/admin/event-revisions/{revision_id}/approve` | Approve a material event revision |
+| POST | `/api/v1/admin/event-revisions/{revision_id}/reject` | Reject a material event revision |
+| GET | `/api/v1/admin/organizers` | List organizer profiles and memberships |
+| POST | `/api/v1/admin/organizers` | Grant organizer access and club membership |
 | DELETE | `/api/v1/admin/organizers/{organizer_id}/memberships/{membership_id}` | Revoke a club membership (soft revoke) |
 | POST | `/api/v1/admin/organizers/{organizer_id}/trust` | Grant/revoke trusted status |
 
