@@ -1,6 +1,6 @@
 # CampusLoop — Technical Requirements Document
 
-**Version:** 1.0  
+**Version:** 1.1  
 **Status:** Draft baseline  
 **Architecture direction:** Modular monolith  
 **Initial deployment scope:** Single college
@@ -75,7 +75,7 @@ Versions should be pinned and upgraded deliberately during implementation.
 
 Suggested backend modules:
 
-- `auth`: registration, login, email verification, refresh, logout, password reset.
+- `auth`: registration, email verification/resend, login, refresh, logout, password reset.
 - `users`: user profile and student-facing account data.
 - `colleges`: college records, approved email domains, and college settings.
 - `organizers`: organizer membership, club association, and trust status.
@@ -158,7 +158,8 @@ The following routes are a planning baseline. Request/response schemas, query pa
 | Method | Endpoint | Purpose |
 |---|---|---|
 | POST | `/api/v1/auth/register` | Create an account |
-| POST | `/api/v1/auth/verify-email` | Verify email ownership |
+| POST | `/api/v1/auth/verify-email` | Verify email ownership and assign college affiliation |
+| POST | `/api/v1/auth/resend-verification` | Request a replacement verification message |
 | POST | `/api/v1/auth/login` | Authenticate |
 | POST | `/api/v1/auth/refresh` | Rotate refresh token and issue access token |
 | POST | `/api/v1/auth/logout` | Revoke session/refresh token |
@@ -209,6 +210,7 @@ The following routes are a planning baseline. Request/response schemas, query pa
 | GET | `/api/v1/admin/events/pending` | List pending events in college scope |
 | POST | `/api/v1/admin/events/{event_id}/approve` | Approve event |
 | POST | `/api/v1/admin/events/{event_id}/reject` | Reject event |
+| DELETE | `/api/v1/admin/organizers/{organizer_id}/memberships/{membership_id}` | Revoke a club membership (soft revoke) |
 | POST | `/api/v1/admin/organizers/{organizer_id}/trust` | Grant/revoke trusted status |
 
 These endpoint names may be refined to maintain consistent resource semantics. Administrative actions must create auditable records.
@@ -234,7 +236,7 @@ The database design must account for:
 - Use foreign keys for relational integrity.
 - Add uniqueness constraints for verified identity and active registration rules where appropriate.
 - Index common event discovery filters and ownership lookups.
-- Use transactions for registration and event state changes.
+- Use transactions for registration, event state changes, revision approvals, organizer membership revocation, and audit-log writes.
 - Use migrations for all schema changes.
 - Store timestamps consistently in UTC; convert to the user's locale at the presentation layer.
 
@@ -320,8 +322,9 @@ Hiding a button in the frontend is not authorization.
 
 ### Integration tests
 
-- Registration and email verification
+- Registration, email verification, and verification resend
 - Event creation and approval
+- Organizer membership revocation and role/trust cleanup
 - Trusted and untrusted publishing paths
 - Registration cancellation
 - College-scope authorization
