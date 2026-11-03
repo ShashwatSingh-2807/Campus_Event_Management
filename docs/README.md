@@ -10,12 +10,12 @@ This folder contains the product and engineering specifications for CampusLoop.
 | 02 | [Technical Requirements Document](02_TRD.md) | 1.0 | Draft baseline |
 | 03 | [Application Flow](03_APPLICATION_FLOW.md) | 1.0 | Draft baseline |
 | 04 | [Database Design](04_DATABASE_DESIGN.md) | 1.1 | Draft baseline |
+| 05 | [API Specification](05_API_SPECIFICATION.md) | 1.0 | Draft baseline |
 
 ## Planned documents
 
 | # | Document | Purpose |
 |---|---|---|
-| 05 | API Specification | Request/response contracts, validation, status codes, authorization, and examples |
 | 06 | UI/UX Blueprint | Page layouts, component inventory, responsive behavior, and interaction states |
 | 07 | Architecture Decision Records | Important decisions, context, alternatives, and consequences |
 
@@ -25,7 +25,7 @@ This folder contains the product and engineering specifications for CampusLoop.
 2. Read the TRD to understand the proposed architecture and engineering constraints.
 3. Read the Application Flow to understand how users move through the product.
 4. Read the Database Design to understand entities, relationships, constraints, and transaction rules.
-5. Use the API Specification as the implementation-level contract between frontend and backend.
+5. Read the API Specification for endpoint contracts, payloads, authorization, and error behavior.
 
 ## Status conventions
 
