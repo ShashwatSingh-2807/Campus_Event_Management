@@ -280,7 +280,7 @@ Metrics should be interpreted in context; raw registrations alone do not prove s
 - The institution can provide or confirm an approved email-domain policy.
 - College administrators can identify authorized clubs and organizers.
 - Individual registration is sufficient for the MVP.
-- Event cancellation is allowed until strictly before event start; material edits to approved events require a reviewed revision.
+- Material edits to approved events require a reviewed revision, as defined in the confirmed business rules.
 - Event categories, eligibility rules, and required organizer verification evidence may be refined during pilot planning.
 - Legal, privacy, and institutional policy requirements must be reviewed before real student data is collected.
 
