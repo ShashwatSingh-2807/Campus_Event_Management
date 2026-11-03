@@ -1,7 +1,7 @@
 # CampusLoop Database Design
 
 **Document:** 04 — Database Design  
-**Version:** 1.0  
+**Version:** 1.1  
 **Status:** Draft baseline  
 **Database:** PostgreSQL  
 **Scope:** Single-college MVP pilot at NIE Mysuru; schema designed so additional colleges can be onboarded later.
@@ -13,6 +13,11 @@
 This document defines the initial relational data model for CampusLoop. It translates the PRD, TRD, and Application Flow into database entities, relationships, constraints, and transaction rules.
 
 The schema is intentionally designed for the MVP. It supports verified students, club-based organizers, trusted publishing, event approval, individual registrations, and college-level administration. Team registration, payments, attendance scanning, certificates, and waitlists are outside this version.
+
+The following product decisions have been confirmed for this baseline:
+- A student may register again after cancelling, provided registration is open and capacity is available. The same registration row is reactivated.
+- One account has at most one college affiliation in the MVP.
+- Material edits to an approved event must be reviewed before they replace the currently approved event details, including when the organizer is a trusted publisher.
 
 A documented schema is a design proposal. It becomes authoritative only after review and implementation testing.
 
@@ -33,8 +38,8 @@ A documented schema is a design proposal. It becomes authoritative only after re
 | Identity | `users`, `email_verification_tokens`, `refresh_sessions` | Accounts, verification, and refresh-session lifecycle |
 | Authorization | `user_role_assignments` | College-scoped and platform-level roles |
 | Clubs | `clubs`, `club_memberships`, `organizer_profiles` | Clubs, organizer membership, and trusted-publisher status |
-| Events | `event_categories`, `events`, `event_approval_history` | Event content, lifecycle, and approval trail |
-| Participation | `registrations` | Individual student registrations |
+| Events | `event_categories`, `events`, `event_revisions`, `event_approval_history` | Approved event content, proposed edits, lifecycle, and approval trail |
+| Participation | `registrations`, `registration_status_history` | Individual registrations and their activation/cancellation history |
 | Governance | `audit_logs` | Security-sensitive and administrative activity |
 
 Primary keys will use UUIDs. Table and column names use `snake_case`. SQLAlchemy models and Alembic migrations will implement this design.
@@ -59,10 +64,15 @@ erDiagram
     COLLEGES ||--o{ EVENTS : hosts
     CLUBS ||--o{ EVENTS : organizes
     USERS ||--o{ EVENTS : creates
+    EVENTS ||--o{ EVENT_REVISIONS : receives
+    USERS ||--o{ EVENT_REVISIONS : proposes
     EVENTS ||--o{ EVENT_APPROVAL_HISTORY : records
+    EVENT_REVISIONS o|--o{ EVENT_APPROVAL_HISTORY : reviewed_in
     USERS ||--o{ EVENT_APPROVAL_HISTORY : reviews
     EVENTS ||--o{ REGISTRATIONS : receives
     USERS ||--o{ REGISTRATIONS : makes
+    REGISTRATIONS ||--o{ REGISTRATION_STATUS_HISTORY : tracks
+    USERS o|--o{ REGISTRATION_STATUS_HISTORY : changes
     USERS ||--o{ AUDIT_LOGS : performs
     COLLEGES ||--o{ AUDIT_LOGS : scopes
 ```
@@ -103,7 +113,7 @@ A domain must be explicitly configured by an administrator. Do not accept arbitr
 
 ### 5.3 `users`
 
-Stores the account and basic profile. A user has at most one active college affiliation in the MVP.
+Stores the account and basic profile. A user has at most one college affiliation in the MVP. `college_id` is assigned by the backend after institutional email verification and is not user-editable.
 
 | Column | Type | Rules |
 |---|---|---|
@@ -118,8 +128,9 @@ Stores the account and basic profile. A user has at most one active college affi
 
 Constraints:
 - Unique index on normalized `email`.
-- A verified student must have a college affiliation; enforce this in the verification transaction and with an appropriate check/trigger only if the chosen implementation can express the rule safely.
+- A verified student must have a college affiliation; enforce this in the verification transaction. The database should prevent a verified account from existing without its college affiliation.
 - Do not allow a client to set `college_id` directly during signup. The backend derives it from the verified, configured domain and the verification workflow.
+- After verification, the account remains affiliated with that one college in the MVP. Do not silently move an account to another college. A future transfer process would require an explicit, audited account-reaffiliation workflow.
 - Account deletion should be a controlled deactivation/anonymization workflow, not an unrestricted cascading delete that destroys audit history.
 
 ### 5.4 `email_verification_tokens`
@@ -266,6 +277,7 @@ Stores the event itself and its current lifecycle state.
 | `rejection_reason` | TEXT | Nullable |
 | `cancellation_reason` | TEXT | Nullable |
 | `published_at` | TIMESTAMPTZ | Nullable |
+| `content_version` | INTEGER | Required; default 1; increments whenever approved event content is changed |
 | `created_at`, `updated_at` | TIMESTAMPTZ | Required |
 
 Allowed statuses:
@@ -278,26 +290,59 @@ Allowed statuses:
 - `CANCELLED`
 - `REJECTED`
 
-The backend validates allowed transitions. For example, a normal draft is submitted for approval; a trusted publisher can publish directly; an approved event moves through registration closed, ongoing, and completed. Cancellation is available only to authorized users and must be recorded.
+The backend validates allowed transitions. For example, a normal draft is submitted for approval; a trusted publisher can publish directly on initial publication; an approved event moves through registration closed, ongoing, and completed. Cancellation is available only to authorized users and must be recorded.
+
+For an already-approved event, material edits are submitted as a separate event revision for college-admin review. The approved row in `events` remains unchanged and continues to power public event details while the proposed revision is pending. On approval, the proposed content is copied into `events` atomically and `content_version` is incremented. On rejection, the approved event remains unchanged. This approval requirement also applies to trusted publishers; trusted status bypasses initial publication review, not review of material edits to an approved event.
+
+Material edits include changes to the title, summary, description, category, venue or online details, event schedule, registration window, or capacity. Until a narrower non-material-edit policy is defined, changes to approved event content should use the revision workflow rather than being written directly to the published row.
 
 The `college_id` on an event must match the college of its club. The creator must be an active member of that club with sufficient membership permissions. Enforce these cross-table rules in the service layer and, where practical, with composite foreign keys.
 
-### 5.12 `event_approval_history`
+### 5.12 `event_revisions`
 
-Keeps a history of approval decisions rather than only storing the latest result on the event.
+Stores proposed material changes to an event that has already been approved or published. This keeps unapproved edits separate from the public, approved event record.
 
 | Column | Type | Rules |
 |---|---|---|
 | `id` | UUID | Primary key |
 | `event_id` | UUID | FK → `events.id`, required |
+| `version` | INTEGER | Required; revision number for this event |
+| `base_content_version` | INTEGER | Required; `events.content_version` when this revision was submitted |
+| `proposed_by_user_id` | UUID | FK → `users.id`, required |
+| `proposed_data` | JSONB | Required; complete validated snapshot of editable event fields |
+| `status` | VARCHAR(24) | `PENDING_APPROVAL`, `APPROVED`, `REJECTED`, or `SUPERSEDED` |
+| `created_at` | TIMESTAMPTZ | Required |
+| `reviewed_at` | TIMESTAMPTZ | Nullable |
+
+Constraints and behavior:
+- Unique on `(event_id, version)`.
+- A partial unique index allows at most one row per event with `status = 'PENDING_APPROVAL'`.
+- Once submitted, `proposed_data` is immutable. A change to the proposal requires a new revision or replacement of the still-pending proposal under a controlled service operation.
+- Validate the JSON structure against the event schema in the backend before inserting it. Do not accept arbitrary JSON fields from clients.
+- `base_content_version` prevents a stale proposal from overwriting newer approved content. Before approval, lock the event row and verify that its current `content_version` still matches the revision's base version.
+- Approval applies the proposed fields to `events`, increments `events.content_version`, marks the revision approved, and inserts the approval-history record in one transaction.
+- Rejection marks the revision rejected and records the review decision; the approved event row is not changed.
+- Only authorized organizers for the event's club may submit revisions. Only a college admin for the event's college may approve or reject them.
+
+When a revision is pending, the public event remains the last approved version. This avoids showing students unreviewed schedule, venue, capacity, or description changes.
+
+### 5.13 `event_approval_history`
+
+Keeps a history of initial event approval decisions and later revision decisions.
+
+| Column | Type | Rules |
+|---|---|---|
+| `id` | UUID | Primary key |
+| `event_id` | UUID | FK → `events.id`, required |
+| `revision_id` | UUID | FK → `event_revisions.id`, nullable for initial publication review |
 | `reviewed_by_user_id` | UUID | FK → `users.id`, required |
 | `decision` | VARCHAR(20) | `APPROVED` or `REJECTED` |
 | `comment` | TEXT | Optional |
 | `created_at` | TIMESTAMPTZ | Required |
 
-Each submission/review cycle can create a new history row. The current event status remains on `events`; the history table explains how it reached that state.
+For initial publication, `revision_id` is null and the decision applies to the event submission itself. For a material edit, `revision_id` identifies the exact proposed revision reviewed. The current event content remains on `events`; this table explains how initial publication and later changes were reviewed.
 
-### 5.13 `registrations`
+### 5.14 `registrations`
 
 Stores individual student registrations. Team registration and waitlists are not part of this MVP.
 
@@ -312,10 +357,28 @@ Stores individual student registrations. Team registration and waitlists are not
 | `created_at`, `updated_at` | TIMESTAMPTZ | Required |
 
 Constraints:
-- Unique on `(event_id, student_user_id)` for the MVP. A cancelled registration row is retained and cannot be duplicated; re-registration can reactivate the same row if product policy permits.
+- Unique on `(event_id, student_user_id)` for the MVP. A student/event pair has one registration row, whether currently registered or cancelled.
 - Student must be verified and affiliated with the same college as the event.
 - Only published events within their registration window accept registrations.
-- A cancellation updates the existing row; it does not erase the participation history.
+- On cancellation, set status to `CANCELLED` and populate `cancelled_at`. On re-registration, reactivate the same row by setting status to `REGISTERED`, updating `registered_at` to the latest successful registration time, and clearing `cancelled_at`.
+- Re-registration is allowed only while the registration window is open and capacity is available. The reactivated row counts as one active seat; it does not create a second registration.
+- Record every initial registration, cancellation, and reactivation in `registration_status_history` so the sequence is retained even though the current state is stored on one row.
+
+### 5.15 `registration_status_history`
+
+Records every change in a registration's lifecycle, including repeated cancellations and reactivations.
+
+| Column | Type | Rules |
+|---|---|---|
+| `id` | UUID | Primary key |
+| `registration_id` | UUID | FK → `registrations.id`, required |
+| `previous_status` | VARCHAR(20) | Nullable for the initial registration event |
+| `new_status` | VARCHAR(20) | `REGISTERED` or `CANCELLED` |
+| `changed_by_user_id` | UUID | FK → `users.id`, nullable only for controlled system actions |
+| `reason` | TEXT | Optional |
+| `created_at` | TIMESTAMPTZ | Required |
+
+Insert the registration row and its initial history row in one transaction. Cancellation and reactivation each update the current registration and append a history row in the same transaction. Application roles should not be able to update or delete historical rows.
 
 ## 6. Audit logging
 
@@ -353,7 +416,9 @@ Create indexes for common filters and joins:
 | `registrations` | Unique on `(event_id, student_user_id)` | Prevent duplicate registration |
 | `registrations` | Index on `(student_user_id, status, registered_at)` | Student's registered events |
 | `registrations` | Index on `(event_id, status)` | Participant lists and capacity checks |
-| `event_approval_history` | Index on `(event_id, created_at)` | Approval history |
+| `event_revisions` | Unique on `(event_id, version)` and partial unique on `event_id` for pending revisions | Prevent duplicate revision numbers and simultaneous pending edits |
+| `event_approval_history` | Index on `(event_id, created_at)` and optional `revision_id` | Initial and revision approval history |
+| `registration_status_history` | Index on `(registration_id, created_at)` | Registration lifecycle history |
 | `audit_logs` | Index on `(college_id, created_at)` and `(entity_type, entity_id)` | Audit investigation |
 
 For frequently queried event lists, use pagination and stable ordering (for example, `starts_at, id`). Add partial indexes only after query patterns are measured.
@@ -371,8 +436,9 @@ Recommended MVP approach:
 5. Check whether the student already has a registration row.
 6. Count rows with `status = 'REGISTERED'` for that event.
 7. If capacity is set and the count has reached it, reject the request.
-8. Insert the registration (or reactivate the existing cancelled row if re-registration is allowed).
-9. Commit.
+8. If no row exists, insert it; if a cancelled row exists, reactivate that same row and update its latest registration timestamp.
+9. Append a `registration_status_history` row for the registration or reactivation.
+10. Commit.
 
 All registration creation paths must use this service/locking rule. The unique constraint remains a final defense against duplicate requests. If throughput later requires a counter-based approach, introduce it with a carefully tested atomic update and reconciliation job.
 
@@ -382,8 +448,10 @@ All registration creation paths must use this service/locking rule. The unique c
 |---|---|
 | Browse published events | Public; college filter applies |
 | Register for an event | Verified student in the same college |
-| Create/edit a club event | Active club member with OWNER or EDITOR permission |
-| Publish directly | Eligible active organizer with trusted-publisher status |
+| Create/edit a draft event | Active club member with OWNER or EDITOR permission |
+| Submit material edits to an approved event | Active club member with OWNER or EDITOR permission; revision review required |
+| Publish a new event directly | Eligible active organizer with trusted-publisher status |
+| Approve/reject material event revisions | College admin for the event's college |
 | Submit for approval | Eligible active organizer without trusted-publisher status |
 | Approve/reject an event | College admin for that college |
 | Grant/revoke organizer trust | College admin for that college |
@@ -411,20 +479,28 @@ The frontend may hide unavailable actions, but the backend must independently en
 7. Add service tests for verification, role checks, approval transitions, and concurrent registration capacity.
 8. Use test data to validate that one college cannot access another college's private organizer or administrative data.
 
-## 12. Open decisions before implementation
+## 12. Confirmed decisions and remaining policy choices
 
-These choices should be confirmed before finalizing the first migration:
+The following database-level product decisions are confirmed for this version:
+
+| Decision | Confirmed rule | Database consequence |
+|---|---|---|
+| Re-registration after cancellation | Allowed while registration is open and capacity is available | Reactivate the existing unique `(event_id, student_user_id)` row; append a status-history record |
+| College affiliation | One college per account in the MVP | Store one `users.college_id`; assign after verification and do not allow client-side changes |
+| Editing an approved event | Material edits require approval again | Store proposed edits in `event_revisions`; keep the public approved event unchanged until approval |
+
+Additional policy choices still need to be settled before implementation:
 
 | Decision | Proposed MVP default | Why it matters |
 |---|---|---|
-| Can a student re-register after cancelling? | Yes, reactivate the same registration row while registration is open | Preserves one row per student/event |
-| Can one account belong to multiple colleges? | No; one active college affiliation in MVP | Keeps authorization and discovery simple |
 | Can clubs have multiple owners? | Yes | Avoids a single-person bottleneck |
-| Can an event be edited after approval? | Material edits return it to approval; minor edits may be allowed by policy | Prevents trusted content from changing unnoticed |
 | Are external guests allowed to register? | No in MVP | Keeps the first release college-scoped |
 | Are waitlists supported? | No in MVP | Avoids extra capacity and promotion workflows |
+| What qualifies as a non-material correction? | Until defined, route edits to approved event content through revision approval | Avoids accidentally exposing unreviewed changes |
+| What happens when an approved revision changes date or venue? | Keep existing registrations; require organizer/admin communication policy | Schedule and venue changes can materially affect attendees |
+| Can an approved revision reduce capacity below the current active registration count? | No | Prevents an approved change from making the event oversubscribed |
 
-These defaults are recommendations, not already implemented behavior. Confirm them against the PRD before creating migrations.
+These defaults and policy choices should be checked against the PRD before creating migrations. In particular, the API must implement reactivation, revision submission/review, and college-scoped authorization as explicit workflows.
 
 ## 13. Out of scope for v1.0
 
