@@ -1,7 +1,7 @@
 # CampusLoop — UI/UX Blueprint
 
 **Document:** 06 — UI/UX Blueprint  
-**Version:** 1.0  
+**Version:** 1.1  
 **Status:** Draft baseline  
 **Initial platform:** Responsive website  
 **Primary users:** Visitors, verified students, organizers, and college administrators  
@@ -325,11 +325,13 @@ Use a confirmation dialog or a focused confirmation panel before the initial reg
 After success:
 - Show a clear registered state.
 - Provide a link to My Events.
+- On a cancelled registration, show 'Register again' only while the registration window is open and capacity may be available.
 - Do not imply that an email or notification was sent unless a notification service has actually confirmed delivery.
 
 For cancellation:
 - Ask for confirmation before cancelling.
 - Explain that the seat may become available to another student.
+- Show the cutoff clearly: students may cancel strictly before the event start time; at or after the start, the action is unavailable.
 - Show the updated Cancelled state only after the API confirms it.
 
 ---
@@ -365,6 +367,7 @@ States:
 - Waiting for token / processing.
 - Verification successful.
 - Link expired or invalid, with a route to request a new verification message.
+- A 'Resend verification email' action calls `POST /auth/resend-verification`; show the same generic confirmation regardless of account state.
 - Email already verified.
 - Network failure with Retry.
 
@@ -389,7 +392,7 @@ Behavior:
 - Refresh token remains in its HttpOnly cookie.
 - Route the user to the intended destination or their default permitted workspace.
 - Show one generic invalid-credentials message.
-- Provide a distinct unverified-email state with a resend-verification path only once the corresponding API action is specified.
+- Provide a distinct unverified-email state with a 'Resend verification email' action. The resend response is generic and must not reveal account existence.
 
 ### 8.4 Forgot password — `/forgot-password`
 
@@ -561,7 +564,7 @@ Use one clear form divided into sections rather than a complicated multi-step wi
 - Eligibility notes.
 - Contact email.
 
-The last section is required by the PRD but depends on adding `eligibility_notes` and `contact_email` to the database design and API event schemas before implementation. Until that alignment is completed, treat it as a documented schema dependency, not a frontend-only field.
+The last section is backed by `eligibility_notes` and `contact_email` in Database Design v1.2 and the API event write/revision schemas. Implement these as persisted event fields, not frontend-only values.
 
 Actions:
 - Save Draft.
@@ -718,7 +721,10 @@ Add Organizer flow:
 Trust management:
 - Display trusted status separately from organizer role and club membership.
 - Provide a deliberate Grant Trust / Revoke Trust action.
-- Ask for confirmation and optional explanatory note.
+- Provide a separate Revoke Club Membership action for each club membership.
+- Ask for confirmation before revocation; explain that access to that club's events and participants will be removed.
+- When the final active club membership is revoked, explain that organizer access and trusted-publisher status in the college are also removed.
+- Ask for confirmation and optional explanatory note for trust changes.
 - Explain that trusted status allows direct initial publishing but does not bypass review for material edits to approved events.
 
 API:
@@ -963,6 +969,7 @@ The frontend may hide actions based on the user's roles and returned resource st
 | Event discovery | `GET /event-categories`, `GET /events` |
 | Event detail | `GET /events/{event_id}` |
 | Student registration | `POST /auth/register` |
+| Resend verification | `POST /auth/resend-verification` |
 | Email verification | `POST /auth/verify-email` |
 | Login / logout | `POST /auth/login`, `POST /auth/logout` |
 | Refresh session | `POST /auth/refresh` |
@@ -984,6 +991,7 @@ The frontend may hide actions based on the user's roles and returned resource st
 | Revision approval queue | `GET /admin/event-revisions/pending` |
 | Revision approval/rejection | `POST /admin/event-revisions/{revision_id}/approve`, `POST /admin/event-revisions/{revision_id}/reject` |
 | Organizer management | `GET /admin/organizers`, `POST /admin/organizers` |
+| Organizer membership revocation | `DELETE /admin/organizers/{organizer_id}/memberships/{membership_id}` |
 | Trust management | `POST /admin/organizers/{organizer_id}/trust` |
 
 ---
@@ -994,11 +1002,11 @@ Do not silently build UI around fields or policies that are not yet aligned acro
 
 | Item | Current treatment | Follow-up |
 |---|---|---|
-| Eligibility and event contact information | Included in the event form design because the PRD requires it | Add `eligibility_notes` and `contact_email` to Database Design and API contracts, or explicitly remove from MVP |
-| Event cancellation cutoff | UI follows the backend's returned eligibility/error state | Confirm the proposed "until event start" policy before implementing cancellation controls |
-| Organizer membership revocation | Not yet fully specified by the API | Define an admin action and endpoint before building organizer offboarding UI |
+| Eligibility and event contact information | Added as persisted `eligibility_notes` and `contact_email` fields | Keep DB, API, and frontend schemas aligned |
+| Student cancellation cutoff | Confirmed as strictly before event start | Enforce using server time; do not rely on client clock |
+| Organizer membership revocation | Added as soft revocation of individual club membership | Keep authorization scoped to active memberships and preserve audit history |
+| Verification resend | Added as `POST /auth/resend-verification` with generic response and rate limits | Keep account-enumeration protection and token invalidation in place |
 | College settings editing | Read-only/omitted because no settings API exists | Define college settings APIs before enabling edit controls |
-| Verification resend | UI may offer the action only after an endpoint is added | Specify resend-verification endpoint and rate limit |
 | Platform-admin workspace | Not part of the MVP UI | Design only when platform operations are in scope |
 | Event imagery | Optional visual in card/detail | Define upload/storage API and image moderation before making uploads a required field |
 
@@ -1023,13 +1031,15 @@ Build the frontend in small vertical slices so every screen can be exercised aga
 - [ ] Visitors can browse and view published event information without logging in.
 - [ ] Search and filters work and survive refresh/share through URL query parameters.
 - [ ] Registration directs visitors to authentication and returns them to the intended event where possible.
-- [ ] Unverified users are clearly guided through email verification.
+- [ ] Unverified users are clearly guided through email verification and can request a replacement message.
+- [ ] Students can cancel their own registrations only strictly before event start.
 - [ ] Student can see their upcoming, past, and cancelled registrations.
 - [ ] Re-registration reuses the existing registration and reflects the API-confirmed result.
 - [ ] Organizer can create a draft and sees only actions allowed by their current trust state.
 - [ ] Untrusted organizer can submit for approval; trusted organizer can directly publish a new event.
 - [ ] Published event content is not changed publicly while a material revision is pending.
 - [ ] College admin can review new submissions and event revisions.
+- [ ] College admin can revoke an individual club membership and see the resulting access/trust changes.
 - [ ] Participant data is visible only to authorized organizers/admins.
 - [ ] CSV export has a clear privacy warning and safe download behavior.
 - [ ] Every data screen has loading, empty, and error states.
