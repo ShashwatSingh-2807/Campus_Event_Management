@@ -6,7 +6,7 @@ CampusLoop aims to give students one reliable place to discover campus events an
 
 ## Current status
 
-**Phase:** Product definition and technical planning
+**Phase:** Product and technical specifications established; implementation setup next
 
 The initial product requirements and architecture are documented. Application code has not been implemented yet.
 
