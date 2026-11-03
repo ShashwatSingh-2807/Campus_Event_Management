@@ -1,7 +1,7 @@
 # CampusLoop Database Design
 
 **Document:** 04 — Database Design  
-**Version:** 1.1  
+**Version:** 1.2  
 **Status:** Draft baseline  
 **Database:** PostgreSQL  
 **Scope:** Single-college MVP pilot at NIE Mysuru; schema designed so additional colleges can be onboarded later.
@@ -177,10 +177,13 @@ Stores roles separately from the user account so one user can be a student and a
 | `college_id` | UUID | FK → `colleges.id`, nullable only for platform-wide roles |
 | `role` | VARCHAR(30) | `STUDENT`, `ORGANIZER`, `COLLEGE_ADMIN`, `PLATFORM_ADMIN` |
 | `granted_by_user_id` | UUID | FK → `users.id`, nullable for controlled system bootstrap |
+| `revoked_by_user_id` | UUID | FK → `users.id`, nullable until revoked |
+| `revoked_at` | TIMESTAMPTZ | Nullable; null means the role assignment is active |
 | `created_at` | TIMESTAMPTZ | Required |
 
 Constraints:
-- Unique on `(user_id, college_id, role)`, with PostgreSQL null-aware uniqueness handled explicitly (for example, a partial unique index for platform roles).
+- Enforce uniqueness only for active assignments using partial unique indexes where `revoked_at IS NULL`; handle platform-wide rows separately because `college_id` is null.
+- Revocation is soft: set `revoked_at` and `revoked_by_user_id`, and append an audit log. Do not delete the historical role assignment.
 - `PLATFORM_ADMIN` must have `college_id IS NULL`; college-scoped roles must have a college.
 - Only an authorized administrator or controlled bootstrap process can grant privileged roles.
 - `STUDENT` is assigned after successful institutional email verification.
@@ -238,6 +241,8 @@ Links organizer profiles to clubs and defines what they can do within each club.
 
 Unique constraint: `(club_id, organizer_profile_id)`. The application must verify that the club and organizer profile belong to the same college. A composite foreign key can enforce this if the implementation adds matching unique keys on the parent tables.
 
+Revocation is performed by setting `is_active = false`, recording the administrator through `granted_by_user_id` history/audit metadata, and appending an audit log. Do not delete the membership row. When the organizer has no remaining active club memberships in that college, revoke the college-scoped `ORGANIZER` role assignment using its `revoked_at` and `revoked_by_user_id` fields, and clear `is_trusted_publisher` so a later re-grant does not silently restore old publishing privileges. If the organizer still has another active club membership in the same college, the college-scoped organizer role and trust attribute remain; access is still limited to the active memberships.
+
 ### 5.10 `event_categories`
 
 A small lookup table for consistent event classification.
@@ -273,6 +278,8 @@ Stores the event itself and its current lifecycle state.
 | `registration_closes_at` | TIMESTAMPTZ | Required |
 | `timezone` | VARCHAR(64) | Required; default from college |
 | `capacity` | INTEGER | Nullable for unlimited; if set, must be greater than zero |
+| `eligibility_notes` | TEXT | Nullable; human-readable eligibility requirements |
+| `contact_email` | VARCHAR(320) | Nullable; validated and normalized email address for event enquiries |
 | `status` | VARCHAR(30) | Required; lifecycle state |
 | `rejection_reason` | TEXT | Nullable |
 | `cancellation_reason` | TEXT | Nullable |
@@ -407,12 +414,13 @@ Create indexes for common filters and joins:
 |---|---|---|
 | `users` | Unique on normalized `email` | Login and duplicate-account prevention |
 | `college_email_domains` | Unique on `domain`; index on `college_id` | Domain lookup and administration |
-| `user_role_assignments` | Unique role assignment per user and scope; index on `(college_id, role)` | Authorization checks |
+| `user_role_assignments` | Partial unique indexes for active role assignments; index on `(college_id, role, revoked_at)` | Authorization checks and role history |
 | `clubs` | Unique on `(college_id, slug)` | College-scoped club identity |
 | `club_memberships` | Unique on `(club_id, organizer_profile_id)`; index on `organizer_profile_id` | Membership lookup |
 | `events` | Index on `(college_id, status, starts_at)` | Public event discovery |
 | `events` | Index on `(club_id, created_at)` | Organizer event dashboard |
 | `events` | Check `ends_at > starts_at`; positive capacity when not null | Valid event data |
+| `events` | Index on `(college_id, contact_email)` only if contact lookup is needed; otherwise no dedicated contact index | Avoid unnecessary indexes on low-selectivity profile fields |
 | `registrations` | Unique on `(event_id, student_user_id)` | Prevent duplicate registration |
 | `registrations` | Index on `(student_user_id, status, registered_at)` | Student's registered events |
 | `registrations` | Index on `(event_id, status)` | Participant lists and capacity checks |
@@ -486,8 +494,10 @@ The following database-level product decisions are confirmed for this version:
 | Decision | Confirmed rule | Database consequence |
 |---|---|---|
 | Re-registration after cancellation | Allowed while registration is open and capacity is available | Reactivate the existing unique `(event_id, student_user_id)` row; append a status-history record |
+| Student cancellation cutoff | A student may cancel their active registration until strictly before the event start time | Service checks current UTC time against `events.starts_at`; no per-event cutoff column in v1.0 |
 | College affiliation | One college per account in the MVP | Store one `users.college_id`; assign after verification and do not allow client-side changes |
 | Editing an approved event | Material edits require approval again | Store proposed edits in `event_revisions`; keep the public approved event unchanged until approval |
+| Event eligibility/contact details | Store optional eligibility notes and an event contact email | Add `eligibility_notes` and `contact_email` to `events`; include them in revision snapshots |
 
 Additional policy choices still need to be settled before implementation:
 
@@ -500,7 +510,7 @@ Additional policy choices still need to be settled before implementation:
 | What happens when an approved revision changes date or venue? | Keep existing registrations; require organizer/admin communication policy | Schedule and venue changes can materially affect attendees |
 | Can an approved revision reduce capacity below the current active registration count? | No | Prevents an approved change from making the event oversubscribed |
 
-These defaults and policy choices should be checked against the PRD before creating migrations. In particular, the API must implement reactivation, revision submission/review, and college-scoped authorization as explicit workflows.
+These defaults and policy choices should be checked against the PRD before creating migrations. In particular, the API must implement reactivation, revision submission/review, college-scoped authorization, organizer membership revocation, and active-role history as explicit workflows.
 
 ## 13. Out of scope for v1.0
 
