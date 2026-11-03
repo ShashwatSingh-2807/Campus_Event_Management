@@ -1,6 +1,6 @@
 # CampusLoop — Application Flow
 
-**Version:** 1.0  
+**Version:** 1.1  
 **Status:** Draft baseline  
 **Initial platform:** Responsive website
 
@@ -34,6 +34,8 @@ A student account does not automatically receive organizer permissions. Organize
 | `/login` | Sign in | Public |
 | `/register` | Student account registration | Public |
 | `/verify-email` | Email verification result | Verification flow |
+| `/forgot-password` | Request password reset | Public |
+| `/reset-password` | Set new password | Public |
 
 ### 3.2 Student routes
 
@@ -177,10 +179,11 @@ Proposed journey:
 2. Student enters an institutional email and password.
 3. Backend checks the email domain against configured college domains.
 4. Verification link or code is sent.
-5. Student completes verification.
-6. Backend assigns college affiliation based on the verified email/domain configuration.
-7. Student completes permitted profile details.
-8. Student can register for eligible events.
+5. If it expires or does not arrive, the student can request a replacement verification message; the response does not disclose whether the account exists.
+6. Student completes verification.
+7. Backend assigns college affiliation based on the verified email/domain configuration.
+8. Student completes permitted profile details.
+9. Student can register for eligible events.
 
 Do not allow a user to select an arbitrary college as proof of affiliation.
 
@@ -206,8 +209,9 @@ Main elements:
 Behavior:
 
 - Students see only their own registrations.
-- Cancellation is shown only when permitted by event policy.
-- The backend validates cancellation eligibility.
+- Cancellation is shown only before the event start time.
+- At or after event start, the cancellation action is unavailable.
+- The backend validates the cutoff using server time; the browser clock is not authoritative.
 
 ### 5.7 Organizer dashboard — `/organizer/dashboard`
 
@@ -228,8 +232,8 @@ Suggested form sections:
 1. Basic information: title, description, category.
 2. Schedule: start/end date and registration open/close times.
 3. Venue: location or online-event details.
-4. Participation: capacity and eligibility.
-5. Organizer information: club and contact details.
+4. Participation: capacity and eligibility notes.
+5. Organizer information: club and event contact email.
 6. Review: preview and save draft/submit.
 
 Behavior:
@@ -250,7 +254,7 @@ Main elements:
 - Submit for approval / publish action where permitted
 - Cancel event action where permitted
 
-The backend validates ownership, role, trust status, and lifecycle transition.
+The backend validates ownership, role, trust status, and lifecycle transition. Material edits to approved events are submitted as revisions and remain unpublished until college-admin approval.
 
 ### 5.10 Participants — `/organizer/events/[eventId]/participants`
 
@@ -297,14 +301,16 @@ Main elements:
 - Club association
 - Organizer access status
 - Trusted-publisher status
-- Grant/revoke organizer access
+- Grant organizer membership
+- Revoke individual club membership
 - Grant/revoke trusted status
 
 Behavior:
 
 - Role and trust are managed independently.
-- Changes require appropriate college-admin permission.
-- Sensitive changes are recorded in an audit log.
+- Revoking a club membership immediately removes access to that club's managed events and participants.
+- If it is the user's final active club membership in the college, organizer role and trusted-publisher status are revoked. A later grant does not automatically restore trusted status.
+- Changes require appropriate college-admin permission and are recorded in an audit log.
 
 ## 6. Key user journeys
 
