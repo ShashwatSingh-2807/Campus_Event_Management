@@ -146,7 +146,7 @@ Stores one-time email verification challenges.
 | `consumed_at` | TIMESTAMPTZ | Nullable |
 | `created_at` | TIMESTAMPTZ | Required |
 
-Store only a cryptographic hash of the verification token. A token is valid only when it has not expired and `consumed_at IS NULL`. Consume it atomically so it cannot be reused. Expired and consumed tokens can be periodically purged according to the retention policy.
+Store only a cryptographic hash of the verification token. A token is valid only when it has not expired and `consumed_at IS NULL`. Consume it atomically so it cannot be reused. When a replacement verification message is issued, mark prior unexpired tokens for the same user as consumed in the same transaction that creates the new token. Expired and consumed tokens can be periodically purged according to the retention policy.
 
 ### 5.5 `refresh_sessions`
 
@@ -243,7 +243,7 @@ Links organizer profiles to clubs and defines what they can do within each club.
 
 Use a partial unique index on `(club_id, organizer_profile_id)` where `is_active = true`, so only one active membership exists for a club/organizer pair while revoked history rows remain. The application must verify that the club and organizer profile belong to the same college. A composite foreign key can enforce this if the implementation adds matching unique keys on the parent tables.
 
-Revocation is performed by setting `is_active = false`, `revoked_at`, and `revoked_by_user_id`, and appending an audit log. Do not delete the membership row. When the organizer has no remaining active club memberships in that college, revoke the college-scoped `ORGANIZER` role assignment using its `revoked_at` and `revoked_by_user_id` fields, and clear `is_trusted_publisher` so a later re-grant does not silently restore old publishing privileges. If the organizer still has another active club membership in the same college, the college-scoped organizer role and trust attribute remain; access is still limited to the active memberships.
+Revocation is performed by setting `is_active = false`, `revoked_at`, and `revoked_by_user_id`, and appending an audit log. Do not delete the membership row. A later re-grant creates a new active membership row; the revoked row remains for history. When the organizer has no remaining active club memberships in that college, revoke the college-scoped `ORGANIZER` role assignment using its `revoked_at` and `revoked_by_user_id` fields, and clear `is_trusted_publisher` so a later re-grant does not silently restore old publishing privileges. If the organizer still has another active club membership in the same college, the college-scoped organizer role and trust attribute remain; access is still limited to the active memberships.
 
 ### 5.10 `event_categories`
 
