@@ -19,6 +19,7 @@ The initial product requirements and architecture are documented. Application co
 | [Application Flow](docs/03_APPLICATION_FLOW.md) | Routes, screens, permissions, and user journeys |
 | [Database Design](docs/04_DATABASE_DESIGN.md) | Entities, relationships, constraints, indexes, and transaction rules |
 | [API Specification](docs/05_API_SPECIFICATION.md) | Endpoint contracts, request/response schemas, authorization, and errors |
+| [UI/UX Blueprint](docs/06_UI_UX_BLUEPRINT.md) | Page layouts, reusable components, responsive behavior, and interaction states |
 | [Documentation Index](docs/README.md) | Documentation map and planned next documents |
 
 ## Planned technology
