@@ -20,7 +20,7 @@ def liveness() -> dict[str, str]:
     return {"status": "ok"}
 
 
-@router.get("/health/ready", summary="Application readiness")
+@router.get("/health/ready", summary="Application readiness", response_model=None)
 def readiness(db: Session = Depends(get_db)) -> dict[str, object] | JSONResponse:
     """Confirm that the API can reach its required database dependency."""
     try:
