@@ -17,6 +17,7 @@ The initial product requirements and architecture are documented. Application co
 | [Product Requirements Document](docs/01_PRD.md) | Product vision, users, scope, requirements, business rules, and success metrics |
 | [Technical Requirements Document](docs/02_TRD.md) | Architecture, stack, backend modules, APIs, security, and engineering standards |
 | [Application Flow](docs/03_APPLICATION_FLOW.md) | Routes, screens, permissions, and user journeys |
+| [Database Design](docs/04_DATABASE_DESIGN.md) | Entities, relationships, constraints, indexes, and transaction rules |
 | [Documentation Index](docs/README.md) | Documentation map and planned next documents |
 
 ## Planned technology
