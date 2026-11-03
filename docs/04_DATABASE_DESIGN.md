@@ -237,11 +237,13 @@ Links organizer profiles to clubs and defines what they can do within each club.
 | `membership_role` | VARCHAR(20) | `OWNER`, `EDITOR`, or `VIEWER` |
 | `is_active` | BOOLEAN | Required; default true |
 | `granted_by_user_id` | UUID | FK → `users.id`, nullable |
+| `revoked_by_user_id` | UUID | FK → `users.id`, nullable until revoked |
+| `revoked_at` | TIMESTAMPTZ | Nullable; records soft revocation time |
 | `created_at`, `updated_at` | TIMESTAMPTZ | Required |
 
 Unique constraint: `(club_id, organizer_profile_id)`. The application must verify that the club and organizer profile belong to the same college. A composite foreign key can enforce this if the implementation adds matching unique keys on the parent tables.
 
-Revocation is performed by setting `is_active = false`, recording the administrator through `granted_by_user_id` history/audit metadata, and appending an audit log. Do not delete the membership row. When the organizer has no remaining active club memberships in that college, revoke the college-scoped `ORGANIZER` role assignment using its `revoked_at` and `revoked_by_user_id` fields, and clear `is_trusted_publisher` so a later re-grant does not silently restore old publishing privileges. If the organizer still has another active club membership in the same college, the college-scoped organizer role and trust attribute remain; access is still limited to the active memberships.
+Revocation is performed by setting `is_active = false`, `revoked_at`, and `revoked_by_user_id`, and appending an audit log. Do not delete the membership row. When the organizer has no remaining active club memberships in that college, revoke the college-scoped `ORGANIZER` role assignment using its `revoked_at` and `revoked_by_user_id` fields, and clear `is_trusted_publisher` so a later re-grant does not silently restore old publishing privileges. If the organizer still has another active club membership in the same college, the college-scoped organizer role and trust attribute remain; access is still limited to the active memberships.
 
 ### 5.10 `event_categories`
 
@@ -303,7 +305,7 @@ For an already-approved event, material edits are submitted as a separate event 
 
 Material edits include changes to the title, summary, description, category, venue or online details, event schedule, registration window, or capacity. Until a narrower non-material-edit policy is defined, changes to approved event content should use the revision workflow rather than being written directly to the published row.
 
-The `college_id` on an event must match the college of its club. The creator must be an active member of that club with sufficient membership permissions. Enforce these cross-table rules in the service layer and, where practical, with composite foreign keys.
+The `college_id` on an event must match the college of its club. The creator must be an active member of that club with sufficient membership permissions. Event data includes optional `eligibility_notes` and `contact_email`; these fields are copied into event revision snapshots and are published only as part of approved event content. Enforce these cross-table rules in the service layer and, where practical, with composite foreign keys.
 
 ### 5.12 `event_revisions`
 
