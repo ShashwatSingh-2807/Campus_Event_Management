@@ -1,6 +1,6 @@
 # CampusLoop — Product Requirements Document
 
-**Version:** 1.1  
+**Version:** 1.2  
 **Status:** Draft baseline  
 **Initial pilot:** NIE Mysuru  
 **Product type:** Responsive web platform; mobile application considered for a later phase
@@ -102,18 +102,19 @@ These may be considered after the core workflow is validated.
 
 - A student can register using an email address from an institution-approved domain.
 - Email ownership must be verified through a verification link or one-time code.
+- An unverified user can request a replacement verification message; the response must not reveal whether an account exists, and requests must be rate-limited.
 - The backend determines the student's college affiliation from the verified email/domain configuration; users must not be able to assign themselves an arbitrary college.
 - Students can log in and view their profile.
 - Students can view their current and past registrations.
 - Students can register individually for an eligible event.
-- Students can cancel their own registration where cancellation is permitted.
+- Students can cancel their own active registration strictly before the event start time. At or after the event start time, self-cancellation is not allowed.
 - The system must prevent duplicate active registrations for the same student and event.
 
 ### 7.3 Organizer access
 
 - Organizer access is granted separately from student verification.
 - A student account does not automatically become an organizer account.
-- Authorized administrators assign or revoke organizer privileges.
+- Authorized administrators assign organizer privileges and can revoke individual club memberships. Revoking the final active club membership in a college also revokes the college-scoped organizer role and trusted-publisher status; a later organizer grant does not automatically restore trust.
 - Organizers can create event drafts and edit events they are permitted to manage.
 - Organizers can submit events for approval when required.
 - Organizers can view registrations for their own events.
@@ -145,7 +146,7 @@ An event should include, at minimum:
 - Contact or support information
 - Publication and lifecycle status
 
-Organizers can update or cancel events they are authorized to manage. Material changes to published events may require re-approval according to college policy; this rule must be finalized before implementation.
+Organizers can update or cancel events they are authorized to manage. Material changes to an approved/published event must be submitted as a separate revision and approved by a college administrator before replacing the currently published content. Trusted-publisher status does not bypass revision approval.
 
 ### 7.6 Registration management
 
@@ -183,7 +184,7 @@ The table is a high-level permission summary. Detailed resource-level authorizat
 7. Students can register only when registration is open and the event is eligible for registration.
 8. Duplicate active registrations are not allowed.
 9. Event capacity must never be exceeded, including during concurrent registrations.
-10. A student can cancel only their own registration, subject to the event's cancellation policy.
+10. A student can cancel only their own active registration and only strictly before the event start time. The cutoff is evaluated by the backend using server time.
 11. Organizers can manage only events assigned to them or their authorized club.
 12. College administrators operate within their college scope.
 13. Platform administrators have platform-level responsibilities and should use elevated access only when necessary.
@@ -279,7 +280,7 @@ Metrics should be interpreted in context; raw registrations alone do not prove s
 - The institution can provide or confirm an approved email-domain policy.
 - College administrators can identify authorized clubs and organizers.
 - Individual registration is sufficient for the MVP.
-- The precise cancellation cutoff and rules for material edits to published events must be finalized.
+- Event cancellation is allowed until strictly before event start; material edits to approved events require a reviewed revision.
 - Event categories, eligibility rules, and required organizer verification evidence may be refined during pilot planning.
 - Legal, privacy, and institutional policy requirements must be reviewed before real student data is collected.
 
@@ -300,7 +301,7 @@ After the MVP is validated, possible extensions include:
 
 The MVP can be considered ready for a controlled pilot when:
 
-- A student can register and verify an approved institutional email.
+- A student can register, request a replacement verification message, and verify an approved institutional email.
 - Unverified users cannot access student registration actions.
 - A verified student can browse published events and register individually.
 - Duplicate active registrations are rejected.
@@ -308,7 +309,7 @@ The MVP can be considered ready for a controlled pilot when:
 - An organizer can create and manage an authorized event.
 - An untrusted organizer's event requires approval.
 - A trusted organizer can publish a valid event directly.
-- College administrators can approve/reject pending events and manage trusted status.
+- College administrators can approve/reject pending events and revisions, grant/revoke organizer access, and manage trusted status.
 - Students and organizers can see only the data permitted to their roles.
 - Critical workflows have automated tests and documented failure behavior.
 - The deployment has appropriate logging, secret management, and backup practices.
