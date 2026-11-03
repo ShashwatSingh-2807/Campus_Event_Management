@@ -1350,9 +1350,9 @@ The frontend should avoid accidental duplicate submissions by disabling actions 
 
 ---
 
-## 20. Known gaps and decisions required before implementation
+## 20. Implementation alignment and remaining decisions
 
-The following items were found while aligning the PRD, TRD, Application Flow, and Database Design. They should be resolved before writing migrations and endpoint code.
+This section records cross-document alignment rules and the few implementation choices that remain environment- or policy-dependent. The confirmed behavior below should be implemented consistently; remaining deployment choices should be finalized before production release.
 
 | Gap / decision | Current API treatment | Required follow-up |
 |---|---|---|
