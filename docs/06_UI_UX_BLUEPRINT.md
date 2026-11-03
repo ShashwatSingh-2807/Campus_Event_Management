@@ -996,9 +996,9 @@ The frontend may hide actions based on the user's roles and returned resource st
 
 ---
 
-## 19. Content and product gaps to resolve
+## 19. Cross-document alignment and remaining UI gaps
 
-Do not silently build UI around fields or policies that are not yet aligned across the product documents.
+The first four rows below capture confirmed product/API behavior that the frontend must follow. The remaining rows identify features intentionally left outside the current UI contract.
 
 | Item | Current treatment | Follow-up |
 |---|---|---|
