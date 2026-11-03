@@ -1,7 +1,7 @@
 # CampusLoop — API Specification
 
 **Document:** 05 — API Specification  
-**Version:** 1.0  
+**Version:** 1.1  
 **Status:** Draft baseline  
 **API style:** REST over HTTPS, JSON  
 **Base path:** `/api/v1`  
@@ -233,6 +233,8 @@ Do not expose password hashes, verification-token hashes, refresh-token hashes, 
   "venue": "Main Auditorium",
   "is_online": false,
   "capacity": 200,
+  "eligibility_notes": "Open to all verified undergraduate students.",
+  "contact_email": "codingclub@college.example",
   "registered_count": 84,
   "status": "PUBLISHED",
   "registration_opens_at": "2026-11-15T04:30:00Z",
@@ -246,6 +248,8 @@ Public event responses must not include participant lists, organizer trust notes
 
 In addition to the summary fields, event detail can include:
 - `description`
+- `eligibility_notes` (optional)
+- `contact_email` (optional)
 - `meeting_url` only when disclosure is permitted by event policy
 - `capacity_remaining` when capacity is limited
 - `registration_open`
@@ -297,6 +301,7 @@ All paths below are relative to the base path `/api/v1`.
 |---|---|---|---|
 | POST | `/auth/register` | Public | Create an unverified account and start email verification |
 | POST | `/auth/verify-email` | Public | Verify email and assign college affiliation |
+| POST | `/auth/resend-verification` | Public | Request a replacement verification message |
 | POST | `/auth/login` | Public | Authenticate and create a refresh session |
 | POST | `/auth/refresh` | Refresh cookie | Rotate refresh session and issue a new access token |
 | POST | `/auth/logout` | Authenticated / refresh cookie | Revoke session and clear cookie |
@@ -354,6 +359,7 @@ All paths below are relative to the base path `/api/v1`.
 | POST | `/admin/event-revisions/{revision_id}/reject` | College admin | Reject a material revision |
 | GET | `/admin/organizers` | College admin | List organizers in the college |
 | POST | `/admin/organizers` | College admin | Grant organizer access and club membership |
+| DELETE | `/admin/organizers/{organizer_id}/memberships/{membership_id}` | College admin | Revoke a club membership (soft revoke) |
 | POST | `/admin/organizers/{organizer_id}/trust` | College admin | Grant or revoke trusted-publisher status |
 
 ### 6.7 Operational endpoints
@@ -437,7 +443,37 @@ Errors: `400 INVALID_OR_EXPIRED_TOKEN`, `409 EMAIL_ALREADY_VERIFIED`, `429 RATE_
 
 The token must be single-use and expire. Verification and college assignment must occur in one database transaction.
 
-### 7.3 POST /auth/login
+### 7.3 POST /auth/resend-verification
+
+Requests a replacement verification message for an account that has not yet completed email verification.
+
+Request:
+
+~~~json
+{
+  "email": "student@college.example"
+}
+~~~
+
+Success: `202 Accepted`
+
+~~~json
+{
+  "message": "If an eligible unverified account exists, verification instructions will be sent."
+}
+~~~
+
+Security and behavior:
+- Return the same generic response whether the account exists, is already verified, is unsupported, or is not eligible. Do not expose account existence.
+- If an eligible unverified account exists, create a new single-use token and send the verification message.
+- Invalidate or consume prior unexpired verification tokens for that user so only the newest message remains usable.
+- Apply rate limits per IP and normalized email address. The exact cooldown and daily limit are deployment configuration.
+- Never return the raw token or place it in application logs.
+- Expired or consumed tokens remain unusable.
+
+No content is returned about the account state. Errors are limited to malformed input (`422 VALIDATION_ERROR`) or throttling (`429 RATE_LIMITED`).
+
+### 7.4 POST /auth/login
 
 Request:
 
@@ -473,7 +509,7 @@ Errors:
 
 Do not reveal whether an email address exists in the system. Apply login rate limits and safe password verification behavior.
 
-### 7.4 POST /auth/refresh
+### 7.5 POST /auth/refresh
 
 Reads the refresh cookie, validates the session, rotates the refresh token, revokes/replaces the old session token, sets the new cookie, and returns a new access token.
 
@@ -493,7 +529,7 @@ Errors: `401 REFRESH_SESSION_INVALID`, `401 REFRESH_SESSION_EXPIRED`, `401 REFRE
 
 Refresh-token reuse detection should revoke the affected session family and write a security audit event. The raw refresh token must never be returned in JSON.
 
-### 7.5 POST /auth/logout
+### 7.6 POST /auth/logout
 
 Revokes the current refresh session, clears the refresh cookie, and invalidates the current authenticated session according to the token strategy.
 
@@ -503,7 +539,7 @@ Success: `204 No Content`.
 
 Logout should be safe to retry. The endpoint must enforce allowed Origin / same-site protections for cookie-authenticated requests.
 
-### 7.6 POST /auth/forgot-password
+### 7.7 POST /auth/forgot-password
 
 Request:
 
@@ -523,7 +559,7 @@ Success: `202 Accepted`
 
 Always use a generic response so callers cannot discover registered email addresses. Store only a hash of the one-time reset token. Apply rate limits.
 
-### 7.7 POST /auth/reset-password
+### 7.8 POST /auth/reset-password
 
 Request:
 
@@ -648,7 +684,9 @@ Create and update requests use the following editable fields:
   "registration_opens_at": "2026-11-15T10:00:00+05:30",
   "registration_closes_at": "2026-12-11T00:00:00+05:30",
   "timezone": "Asia/Kolkata",
-  "capacity": 200
+  "capacity": 200,
+  "eligibility_notes": "Open to all verified undergraduate students.",
+  "contact_email": "codingclub@college.example"
 }
 ~~~
 
@@ -664,6 +702,8 @@ Validation:
 - Registration opening must be before registration closing.
 - Registration closing must not be after the event start time.
 - Capacity must be null (unlimited) or a positive integer.
+- `eligibility_notes` is optional plain text with a documented maximum length (recommended 2,000 characters).
+- `contact_email` is optional; when supplied, validate and normalize it as an email address.
 - For an in-person event, venue is required and meeting URL should be null.
 - For an online event, meeting URL must be a valid permitted URL; venue may contain an optional display label.
 - All timestamp values must include a timezone offset.
@@ -771,7 +811,7 @@ Request:
 
 Rules:
 - The caller must be an active OWNER or EDITOR for the event's club.
-- Proposed data is a complete snapshot of supported editable fields, not an arbitrary patch document.
+- Proposed data is a complete snapshot of supported editable fields, including `eligibility_notes` and `contact_email`, not an arbitrary patch document.
 - Validate all proposed data using the same event validation rules as initial event creation.
 - `base_content_version` must match the current event `content_version`.
 - Only one pending revision may exist per event.
@@ -967,7 +1007,7 @@ Success: `200 OK` with the updated registration.
 
 Errors: `404 RESOURCE_NOT_FOUND`, `409 REGISTRATION_ALREADY_CANCELLED`, `409 CANCELLATION_NOT_ALLOWED`.
 
-**Cancellation policy note:** The PRD has not yet finalized a cancellation cutoff. Until that product rule is decided, the proposed MVP behavior is to allow self-cancellation until the event start time. This cutoff must be confirmed before implementation.
+**Confirmed MVP cancellation cutoff:** A student may cancel their active registration at any time strictly before the event's `starts_at` timestamp. At or after the event start time, self-cancellation is not allowed. The check uses server time and the event timestamp normalized to UTC; the browser clock is not authoritative. This is a fixed MVP rule, not a per-event organizer setting. The API returns `409 CANCELLATION_NOT_ALLOWED` once the cutoff has passed.
 
 ### 13.4 Re-registration behavior
 
@@ -1071,7 +1111,25 @@ Success: `201 Created` with organizer profile and membership.
 
 Errors: `403 COLLEGE_ADMIN_REQUIRED`, `404 USER_OR_CLUB_NOT_FOUND`, `409 ORGANIZER_MEMBERSHIP_ALREADY_EXISTS`, `422 VALIDATION_ERROR`.
 
-### 15.3 POST /admin/organizers/{organizer_id}/trust
+### 15.3 DELETE /admin/organizers/{organizer_id}/memberships/{membership_id}
+
+Soft-revokes a specific organizer's membership in a club. The college administrator must have authority over the college that owns both the organizer profile and club.
+
+Request body: none.
+
+Success: `204 No Content`.
+
+Behavior:
+- Set the targeted `club_memberships.is_active` to false; do not delete the membership row.
+- Record the acting administrator and action in `audit_logs`.
+- If the organizer has no other active club memberships in that college, set the college-scoped `ORGANIZER` role assignment's `revoked_at` and `revoked_by_user_id`, and clear `organizer_profiles.is_trusted_publisher` so a later grant does not silently restore prior trusted privileges.
+- If the organizer retains another active club membership in the same college, retain the college-scoped ORGANIZER role and trust attribute; resource access remains restricted to active memberships.
+- Existing events, registrations, approval records, and audit history are retained. A revoked organizer cannot manage the affected club's events or participant data.
+- A later re-grant uses `POST /admin/organizers` and creates a new active membership. Trusted-publisher status must be granted separately.
+
+Errors: `403 COLLEGE_ADMIN_REQUIRED`, `404 MEMBERSHIP_NOT_FOUND`, `409 MEMBERSHIP_ALREADY_REVOKED`.
+
+### 15.4 POST /admin/organizers/{organizer_id}/trust
 
 Grants or revokes trusted-publisher status. The ID identifies the organizer profile, not an arbitrary user-supplied user ID.
 
@@ -1161,6 +1219,8 @@ Do not use `200 OK` for failed business operations. Use stable machine-readable 
 | `INSTITUTIONAL_EMAIL_NOT_SUPPORTED` | Email domain is not configured for the pilot |
 | `ACCOUNT_SUSPENDED` | Account cannot authenticate or use protected features |
 | `ORGANIZER_ACCESS_REQUIRED` | Caller has no organizer role |
+| `MEMBERSHIP_NOT_FOUND` | Organizer membership is missing or outside administrator scope |
+| `MEMBERSHIP_ALREADY_REVOKED` | Membership is already inactive |
 | `TRUSTED_PUBLISHER_REQUIRED` | Direct initial publishing is not permitted |
 | `COLLEGE_ADMIN_REQUIRED` | College-admin permission is required |
 | `EVENT_MANAGEMENT_FORBIDDEN` | Caller is not assigned to manage the event |
@@ -1247,6 +1307,7 @@ The frontend should avoid accidental duplicate submissions by disabling actions 
 - A supported institutional domain can register.
 - An unsupported domain cannot create an eligible student account.
 - Verification tokens expire and can only be used once.
+- Resend verification uses a generic response, invalidates prior active tokens, and is rate-limited.
 - College affiliation is assigned by the backend after verification.
 - Login rejects invalid credentials and unverified accounts.
 - Refresh rotates tokens and detects reuse.
@@ -1281,6 +1342,8 @@ The frontend should avoid accidental duplicate submissions by disabling actions 
 
 ### Organizer and admin tests
 - Organizer dashboard data is limited to assigned clubs/events.
+- Revoking a club membership blocks that organizer from the club's resources and records an audit entry.
+- Revoking the final active club membership revokes organizer role and clears trusted-publisher status.
 - Participant lists and CSV exports are limited to authorized users.
 - Export values are protected against CSV formula injection.
 - Trust grants/revocations create audit records.
@@ -1293,22 +1356,19 @@ The following items were found while aligning the PRD, TRD, Application Flow, an
 
 | Gap / decision | Current API treatment | Required follow-up |
 |---|---|---|
-| Event eligibility and contact details appear in the PRD but are not columns in the current `events` table | Not part of the writable Event schema in this API baseline | Add appropriate fields such as `eligibility_notes` and `contact_email` to Database Design before implementation, or formally remove them from the MVP |
-| Exact event cancellation cutoff is not finalized | Proposed default: students may cancel until event start | Confirm cancellation policy in product requirements |
+| Event eligibility and contact details | Added to the event schema as optional `eligibility_notes` and `contact_email` fields | Keep database, API, and frontend schemas aligned |
+| Student cancellation cutoff | Confirmed: cancellation is allowed strictly before event start | Enforce with server time against `events.starts_at` |
 | Email verification delivery provider and link/code format are undecided | API accepts a single-use token | Select provider and implementation format; do not expose raw tokens in logs |
+| Verification resend | Added as `POST /auth/resend-verification` with a generic response and configurable rate limits | Keep token invalidation and rate limits covered by tests |
 | Token lifetimes and cookie domain/settings depend on deployment | Configurable; access token is short-lived and refresh is cookie-based | Set concrete production values during environment/security setup |
 | Non-material edits to approved event content are not defined | Route all approved-content edits through revision approval for v1.0 | Define a smaller safe-edit allowlist later if needed |
 | Event-category administration endpoints are not required for the initial student/organizer flow | Public category read endpoint only | Seed categories; add admin CRUD only when category management is needed |
-| Organizer membership deactivation/revocation workflow is not fully specified in the current route plan | Organizer grant and trusted status are specified | Add membership update/revocation endpoint before implementing organizer offboarding |
+| Organizer membership revocation | Defined as soft deactivation of one club membership, with role/trust cleanup when no active memberships remain | Keep membership and role history; re-grant organizer access explicitly |
 | Platform-admin operations are not detailed | Operational health endpoints only | Define a separate platform-admin API contract when platform operations are in scope |
 
-### 20.1 Recommended database alignment
+### 20.1 Database alignment
 
-Before migrations, update the event schema to include the PRD's event information fields if they remain in scope:
-- `eligibility_notes`: nullable text.
-- `contact_email`: nullable validated email address.
-
-These should be added to the database design and event request/response schemas together, rather than implementing frontend-only fields.
+Database Design v1.2 now includes `eligibility_notes` and `contact_email` on events. Both fields are part of the event write schema, public event detail representation, and full event-revision snapshot. Keep the SQLAlchemy model, Pydantic schema, Alembic migration, and frontend types aligned.
 
 ---
 
